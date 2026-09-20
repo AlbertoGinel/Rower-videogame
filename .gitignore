@@ -1,0 +1,7 @@
+node_modules
+dist
+dev-dist
+.DS_Store
+
+# Dev-only generated fixture (8MB) — recreate with `npm run generate:fake-data`
+src/data/fake-history.json
