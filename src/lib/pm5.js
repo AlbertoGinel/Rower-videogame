@@ -9,6 +9,9 @@ import { Capacitor } from '@capacitor/core'
 import { BleClient, numbersToDataView } from '@capacitor-community/bluetooth-le'
 
 const BASE = (hex) => `ce06${hex}-43e5-11e4-916c-0800200c9a66`
+const DISCOVERY_SERVICE_UUID = BASE('0000') // what the PM5 advertises while pairing
+const INFORMATION_SERVICE_UUID = BASE('0010')
+const CONTROL_SERVICE_UUID = BASE('0020')
 const ROWING_SERVICE_UUID = BASE('0030')
 const GENERAL_STATUS_UUID = BASE('0031')
 const SAMPLE_RATE_UUID = BASE('0034') // 0=1s, 1=500ms (default), 2=250ms, 3=100ms
@@ -43,12 +46,17 @@ export function parseGeneralStatus(dataView) {
 
 // onStatus(parsedGeneralStatus) fires on every notification.
 // onDisconnect() fires if the PM5 drops the connection.
-export async function connectPM5({ onStatus, onDisconnect }) {
+// showAllDevices lists every nearby Bluetooth device instead of only PM5s —
+// a fallback if the PM5 doesn't show up in the filtered list.
+export async function connectPM5({ onStatus, onDisconnect, showAllDevices = false }) {
   await ensureInitialized()
 
+  // The PM5 advertises its Discovery service, not the rowing service, so the
+  // picker must filter on that one. Any service we read later has to be
+  // declared up front as optional or the browser refuses access to it.
   const device = await BleClient.requestDevice({
-    services: [ROWING_SERVICE_UUID],
-    optionalServices: [ROWING_SERVICE_UUID]
+    services: showAllDevices ? [] : [DISCOVERY_SERVICE_UUID],
+    optionalServices: [INFORMATION_SERVICE_UUID, CONTROL_SERVICE_UUID, ROWING_SERVICE_UUID]
   })
 
   await BleClient.connect(device.deviceId, () => onDisconnect?.())

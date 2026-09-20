@@ -12,10 +12,20 @@
         <span v-else>Not connected</span>
       </div>
 
-      <button v-if="pm5Status !== 'connected'" class="secondary" :disabled="pm5Status === 'connecting' || !bluetoothSupported" @click="connectPM5">
+      <button v-if="pm5Status !== 'connected'" class="secondary" :disabled="pm5Status === 'connecting' || !bluetoothSupported" @click="connectPM5(false)">
         Connect to PM5
       </button>
       <button v-else class="secondary" @click="disconnectPM5">Disconnect</button>
+
+      <button
+        v-if="pm5Status === 'idle' && bluetoothSupported"
+        class="link"
+        @click="connectPM5(true)"
+      >
+        PM5 not in the list? Show all Bluetooth devices
+      </button>
+
+      <p v-if="pm5Error" class="error">{{ pm5Error }}</p>
 
       <div v-if="pm5Data" class="pm5-readout">
         <div>Distance: <strong>{{ pm5Data.distanceMeters.toFixed(1) }} m</strong></div>
@@ -26,7 +36,10 @@
       <p v-if="!bluetoothSupported" class="hint">
         Web Bluetooth isn't available in this browser — open this page in Chrome on Android.
       </p>
-      <p v-else-if="pm5Status === 'idle'" class="hint">On the PM5: More Options → Connect Bluetooth, then tap Connect here.</p>
+      <p v-else-if="pm5Status === 'idle'" class="hint">
+        On the PM5: More Options → Turn Wireless On → Bluetooth Smart → select your PM5, then tap Connect here. Phone
+        Bluetooth and Location must be on, and ErgData or any other app must not be connected to the PM5.
+      </p>
     </div>
 
     <h2>Pick a category</h2>
@@ -92,25 +105,34 @@ const bluetoothSupported = isBluetoothSupported()
 const pm5Status = ref('idle') // idle | connecting | connected
 const pm5DeviceName = ref('')
 const pm5Data = ref(null)
+const pm5Error = ref('')
 let pm5Connection = null
 
-async function connectPM5() {
+async function connectPM5(showAllDevices = false) {
   pm5Status.value = 'connecting'
+  pm5Error.value = ''
   try {
     pm5Connection = await connectPM5Device({
+      showAllDevices,
       onStatus: (data) => {
         pm5Data.value = data
       },
       onDisconnect: () => {
         pm5Status.value = 'idle'
         pm5DeviceName.value = ''
+        pm5Data.value = null
         pm5Connection = null
       }
     })
     pm5DeviceName.value = pm5Connection.deviceName
     pm5Status.value = 'connected'
-  } catch {
+  } catch (error) {
     pm5Status.value = 'idle'
+    const reason = error?.message || String(error)
+    // Shown on screen so a failure at the gym can be diagnosed from a photo.
+    pm5Error.value = /cancel/i.test(reason)
+      ? 'No device was chosen. If the PM5 wasn’t in the list, try “Show all Bluetooth devices”.'
+      : `Couldn’t connect: ${error?.name ? error.name + ' — ' : ''}${reason}`
   }
 }
 
@@ -264,6 +286,21 @@ header {
   color: #94a3b8;
   font-size: 0.85rem;
   margin: 0;
+}
+button.link {
+  background: none;
+  color: #38bdf8;
+  padding: 4px 0;
+  font-weight: 500;
+  font-size: 0.85rem;
+  text-align: left;
+  text-decoration: underline;
+}
+.error {
+  margin: 0;
+  color: #fca5a5;
+  font-size: 0.85rem;
+  word-break: break-word;
 }
 .pm5-panel {
   display: flex;
