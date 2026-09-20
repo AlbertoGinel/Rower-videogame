@@ -70,6 +70,11 @@
     <p v-if="!canStart" class="hint">Nothing to race against yet — live PM5 racing is the next step.</p>
 
     <Leaderboard :categories="CATEGORIES" :records="records" />
+
+    <footer class="about">
+      Built by Alberto. Like the app?
+      <a href="https://www.linkedin.com/in/aginelsalvador" target="_blank" rel="noopener noreferrer">Connect with me on LinkedIn</a>
+    </footer>
   </section>
 
   <section v-else-if="state === 'countdown'">
@@ -307,6 +312,18 @@ header {
   color: #94a3b8;
   font-size: 0.85rem;
   margin: 0;
+}
+.about {
+  text-align: center;
+  color: #94a3b8;
+  font-size: 0.85rem;
+  line-height: 1.6;
+  padding: 8px 0 16px;
+}
+.about a {
+  display: block;
+  color: #38bdf8;
+  font-weight: 600;
 }
 .pm5-panel button.secondary {
   background: #475569;
