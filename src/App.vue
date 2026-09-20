@@ -12,7 +12,7 @@
         <span v-else>Not connected</span>
       </div>
 
-      <button v-if="pm5Status !== 'connected'" class="secondary" :disabled="pm5Status === 'connecting' || !bluetoothSupported" @click="connectPM5(false)">
+      <button v-if="pm5Status !== 'connected'" :disabled="pm5Status === 'connecting' || !bluetoothSupported" @click="connectPM5(false)">
         Connect to PM5
       </button>
       <button v-else class="secondary" @click="disconnectPM5">Disconnect</button>
@@ -36,10 +36,31 @@
       <p v-if="!bluetoothSupported" class="hint">
         Web Bluetooth isn't available in this browser — open this page in Chrome on Android.
       </p>
-      <p v-else-if="pm5Status === 'idle'" class="hint">
-        On the PM5: More Options → Turn Wireless On → Bluetooth Smart → select your PM5, then tap Connect here. Phone
-        Bluetooth and Location must be on, and ErgData or any other app must not be connected to the PM5.
-      </p>
+      <div v-else-if="pm5Status === 'idle'" class="howto">
+        <h3>How to connect</h3>
+        <ol>
+          <li>
+            <span class="where">On the PM5</span> press <b>More Options</b>, then <b>Turn Wireless On</b>.
+          </li>
+          <li>
+            <span class="where">On the PM5</span> choose <b>Bluetooth Smart</b> and select <b>your PM5</b> (it shows
+            as “PM5” plus its serial number). Ignore “Connect Heart Rate” and the ANT options.
+          </li>
+          <li>
+            <span class="where">On the phone</span> tap the <b>Connect to PM5</b> button above.
+          </li>
+          <li>
+            <span class="where">On the phone</span> a list pops up: tap <b>your PM5</b>. Not there? Tap “Show all
+            Bluetooth devices”.
+          </li>
+          <li>Row a little: the <b>Distance</b> number should start changing.</li>
+        </ol>
+        <p class="checks">
+          If it fails: turn on the phone's <b>Bluetooth</b> and <b>Location</b>, and make sure no other app (ErgData, a
+          watch) is connected to the PM5.
+        </p>
+      </div>
+      <p v-else-if="pm5Status === 'connected'" class="hint">Connected. Row a little: the Distance above should change.</p>
     </div>
 
     <h2>Pick a category</h2>
@@ -286,6 +307,40 @@ header {
   color: #94a3b8;
   font-size: 0.85rem;
   margin: 0;
+}
+.pm5-panel button.secondary {
+  background: #475569;
+}
+.howto {
+  background: #0f172a;
+  border-radius: 10px;
+  padding: 12px 14px;
+  color: #e2e8f0;
+}
+.howto h3 {
+  margin: 0 0 8px;
+  font-size: 1.05rem;
+}
+.howto ol {
+  margin: 0;
+  padding-left: 1.3rem;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-size: 0.95rem;
+  line-height: 1.35;
+}
+.howto .where {
+  color: #38bdf8;
+  font-weight: 700;
+}
+.howto .checks {
+  margin: 10px 0 0;
+  padding-top: 8px;
+  border-top: 1px solid #1e293b;
+  color: #cbd5e1;
+  font-size: 0.85rem;
+  line-height: 1.35;
 }
 button.link {
   background: none;
