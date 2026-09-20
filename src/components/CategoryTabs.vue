@@ -29,19 +29,21 @@ const finishedSet = computed(() => new Set(props.finished))
 <style scoped>
 .tabs {
   display: flex;
-  gap: 4px;
+  gap: 2px;
+  overflow: hidden;
 }
 .tab {
   flex: 1;
   min-width: 0;
   background: #1e293b;
   color: #94a3b8;
-  padding: 8px 0;
+  padding: 7px 0;
   border-radius: 999px;
   font-weight: 600;
-  font-size: clamp(0.68rem, 3.3vw, 0.85rem);
+  font-size: clamp(0.56rem, 2.7vw, 0.75rem);
   white-space: nowrap;
   text-align: center;
+  overflow: hidden;
 }
 .tab.active {
   background: #38bdf8;

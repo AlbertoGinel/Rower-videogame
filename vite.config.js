@@ -3,6 +3,11 @@ import vue from '@vitejs/plugin-vue'
 import { VitePWA } from 'vite-plugin-pwa'
 
 export default defineConfig({
+  build: {
+    // One JS file, no lazily-fetched chunks: after an update, an already-open
+    // page can never ask for an old chunk that the new deploy has deleted.
+    rollupOptions: { output: { inlineDynamicImports: true } }
+  },
   plugins: [
     vue(),
     VitePWA({
