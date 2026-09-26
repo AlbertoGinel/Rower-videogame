@@ -64,6 +64,23 @@ export function cropSamplesToCategory(samples, targetDistance) {
   return cropped
 }
 
+// A live row arrives ~10 times a second; storing every reading would bloat the
+// phone's storage for no gain, since interpolation fills the gaps. Keeps about
+// one sample per minGap seconds, always including the first and last (the last
+// is the one that crosses the finish line).
+export function thinSamples(samples, minGap = 0.5) {
+  const times = sortedTimes(samples)
+  const thinned = {}
+  let lastKept = -Infinity
+  times.forEach((t, i) => {
+    if (t - lastKept >= minGap || i === times.length - 1) {
+      thinned[t] = samples[t]
+      lastKept = t
+    }
+  })
+  return thinned
+}
+
 // Records are already one-per-category, so this is just a straight filter.
 export function ghostsForCategory(records, category, excludeDate) {
   return records.filter((r) => r.category === category && r.date !== excludeDate)

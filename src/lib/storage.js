@@ -38,6 +38,8 @@ export async function saveRecordIfBetter(record) {
   return records
 }
 
+// Local calendar date (YYYY-MM-DD), not UTC, so a late-evening row still
+// counts as today.
 export function todayKey() {
-  return new Date().toISOString().slice(0, 10)
+  return new Date().toLocaleDateString('en-CA')
 }

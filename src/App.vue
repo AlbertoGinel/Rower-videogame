@@ -67,7 +67,7 @@
     <CategoryTabs :categories="CATEGORIES" :active="activeCategory" @select="activeCategory = $event" />
 
     <button :disabled="!canStart" @click="startRace">Start {{ activeCategory }} meters</button>
-    <p v-if="!canStart" class="hint">Nothing to race against yet — live PM5 racing is the next step.</p>
+    <p v-if="!canStart" class="hint">Connect to the PM5 above to start racing.</p>
 
     <Leaderboard :categories="CATEGORIES" :records="records" />
 
@@ -96,9 +96,8 @@
     <p v-if="resultPosition === 1" class="congrats">🎉 Congratulations — 1st in the {{ activeCategory }}m category!</p>
     <p>Time: {{ formatTime(resultTime) }}</p>
     <p>Position in category: {{ ordinal(resultPosition) }}</p>
-    <p class="hint">
-      (Dev placeholder: today's row was stood in for by replaying {{ replayedDate }}'s {{ activeCategory }}m record,
-      until the PM5 is connected via Bluetooth.)
+    <p v-if="raceSource === 'replay'" class="hint">
+      (Dev only: no PM5 was connected, so this row replayed {{ replayedDate }}'s {{ activeCategory }}m record.)
     </p>
     <button @click="goHome">Back</button>
   </section>
@@ -112,10 +111,18 @@ import Leaderboard from './components/Leaderboard.vue'
 import RaceTrack from './components/RaceTrack.vue'
 import { CATEGORIES } from './lib/categories.js'
 import { ordinal } from './lib/format.js'
-import { computeRaceFrame, cropSamplesToCategory, finishTime, ghostsForCategory, rankInCategory } from './lib/ghostEngine.js'
-import { createInterpolatedReplay } from './lib/liveFeed.js'
+import {
+  computeRaceFrame,
+  cropSamplesToCategory,
+  finishTime,
+  ghostsForCategory,
+  rankInCategory,
+  thinSamples
+} from './lib/ghostEngine.js'
+import { createInterpolatedReplay, createLiveFeed } from './lib/liveFeed.js'
 import { connectPM5 as connectPM5Device, isBluetoothSupported } from './lib/pm5.js'
 import { loadRecords, saveRecordIfBetter, saveRecords, todayKey } from './lib/storage.js'
+import { keepScreenOn, releaseScreen } from './lib/wakeLock.js'
 
 const isDev = import.meta.env.DEV
 
@@ -123,16 +130,16 @@ const records = ref([])
 const state = ref('home')
 const activeCategory = ref(CATEGORIES[0])
 const replayedDate = ref('')
+const raceSource = ref('pm5') // pm5 | replay (dev-only fallback when no rower is connected)
 
-// Real PM5 connection test (separate from the Phase 0 replay placeholder
-// below): just proves the link works and shows live raw distance/elapsed,
-// so rowing a bit and watching the number move confirms connectivity.
 const bluetoothSupported = isBluetoothSupported()
 const pm5Status = ref('idle') // idle | connecting | connected
 const pm5DeviceName = ref('')
 const pm5Data = ref(null)
 const pm5Error = ref('')
 let pm5Connection = null
+// Set while a race is running so every PM5 reading also feeds the race.
+let pushToRace = null
 
 async function connectPM5(showAllDevices = false) {
   pm5Status.value = 'connecting'
@@ -142,12 +149,16 @@ async function connectPM5(showAllDevices = false) {
       showAllDevices,
       onStatus: (data) => {
         pm5Data.value = data
+        pushToRace?.(data.distanceMeters)
       },
       onDisconnect: () => {
         pm5Status.value = 'idle'
         pm5DeviceName.value = ''
         pm5Data.value = null
         pm5Connection = null
+        if (raceSource.value === 'pm5' && (state.value === 'countdown' || state.value === 'racing')) {
+          abortRace('The PM5 disconnected, so that row wasn’t recorded. Reconnect and try again.')
+        }
       }
     })
     pm5DeviceName.value = pm5Connection.deviceName
@@ -181,6 +192,12 @@ onMounted(async () => {
   // Ask the browser not to evict IndexedDB under storage pressure — best
   // effort, some browsers grant it silently once the site is installed/used.
   navigator.storage?.persist?.()
+  // The screen lock is dropped whenever the page is hidden; take it back.
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible' && (state.value === 'countdown' || state.value === 'racing')) {
+      keepScreenOn()
+    }
+  })
 })
 
 // Dev-only (`npm run dev`) seeding from a local, git-ignored fixture generated
@@ -215,11 +232,17 @@ const activeFrame = computed(() => {
 
 const resultTime = computed(() => finishTime(liveSamples, activeCategory.value))
 
-// Until live PM5 racing is wired in, a race replays a stored record, so it
-// can only start when this category has one.
-const canStart = computed(() => records.value.some((r) => r.category === activeCategory.value))
+// A race needs only the rower: with no ghosts yet you simply row alone (the
+// track shows "Keep rowing, we're recording!" until there are enough racers).
+// Dev builds can also race without a rower by replaying a stored record.
+const pm5Connected = computed(() => pm5Status.value === 'connected')
+const canReplay = computed(() => isDev && records.value.some((r) => r.category === activeCategory.value))
+const canStart = computed(() => pm5Connected.value || canReplay.value)
 
 function startRace() {
+  raceSource.value = pm5Connected.value ? 'pm5' : 'replay'
+  pm5Error.value = ''
+  keepScreenOn()
   state.value = 'countdown'
 }
 
@@ -229,17 +252,40 @@ function onCountdownDone() {
   finishing = false
   for (const key of Object.keys(liveSamples)) delete liveSamples[key]
 
-  // Phase 0 placeholder: no PM5 connected yet, so "today" is a random past
-  // record for this category replayed live. Phase 1 swaps this block for a
-  // real Web Bluetooth feed (which will also need to crop the continuous
-  // live row into one record per category crossed, via cropSamplesToCategory).
-  const candidates = records.value.filter((r) => r.category === activeCategory.value)
-  const chosen = candidates[Math.floor(Math.random() * candidates.length)]
-  replayedDate.value = chosen.date
+  if (raceSource.value === 'pm5') {
+    replayedDate.value = ''
+    feed = createLiveFeed({
+      // Distance the PM5 shows at GO is the race's zero point.
+      zeroDistance: pm5Data.value?.distanceMeters ?? null,
+      onSample: handleSample,
+      onTick: (t) => {
+        elapsed.value = t
+      }
+    })
+    pushToRace = (meters) => feed.push(meters)
+  } else {
+    const candidates = records.value.filter((r) => r.category === activeCategory.value)
+    const chosen = candidates[Math.floor(Math.random() * candidates.length)]
+    replayedDate.value = chosen.date
+    feed = createInterpolatedReplay({ samples: chosen.samples, onFrame: handleSample, onDone: handleFinish })
+  }
 
   state.value = 'racing'
-  feed = createInterpolatedReplay({ samples: chosen.samples, onFrame: handleSample, onDone: handleFinish })
   feed.start()
+}
+
+function endFeed() {
+  feed?.stop()
+  pushToRace = null
+  releaseScreen()
+}
+
+// Leaves a race without recording it, optionally telling the user why.
+function abortRace(message = '') {
+  finishing = true
+  endFeed()
+  if (message) pm5Error.value = message
+  state.value = 'home'
 }
 
 function handleSample(t, distance) {
@@ -257,7 +303,7 @@ watch(liveDistance, (d) => {
 async function handleFinish() {
   if (finishing) return
   finishing = true
-  feed?.stop()
+  endFeed()
 
   const completed = liveDistance.value >= activeCategory.value
   if (!completed) {
@@ -270,7 +316,7 @@ async function handleFinish() {
     date: todayKey(),
     category: activeCategory.value,
     time,
-    samples: cropSamplesToCategory(liveSamples, activeCategory.value)
+    samples: thinSamples(cropSamplesToCategory(liveSamples, activeCategory.value))
   }
   records.value = await saveRecordIfBetter(record)
   resultPosition.value = rankInCategory(records.value, activeCategory.value, time)
