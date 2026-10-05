@@ -30,7 +30,7 @@
 <script setup>
 import { computed, ref } from 'vue'
 import { leaderboardFor } from '../lib/ghostEngine.js'
-import { ordinal } from '../lib/format.js'
+import { formatDate, ordinal } from '../lib/format.js'
 
 const props = defineProps({
   categories: { type: Array, required: true },
@@ -40,11 +40,6 @@ const props = defineProps({
 
 const selected = ref(props.categories[0])
 const rows = computed(() => leaderboardFor(props.records, selected.value, props.limit))
-
-function formatDate(iso) {
-  const [y, m, d] = iso.split('-')
-  return `${y.slice(2)}/${m}/${d}`
-}
 
 function formatTime(totalSeconds) {
   const s = Math.max(0, Math.round(totalSeconds))
