@@ -120,15 +120,19 @@ export function computeRaceFrame({ liveDistance, ghosts, targetDistance, current
   racers.sort((a, b) => b.distance - a.distance)
   const meIndex = racers.findIndex((r) => r.isMe)
   const me = racers[meIndex]
-  const ahead = meIndex > 0 ? racers[meIndex - 1] : null
-  const behind = meIndex < racers.length - 1 ? racers[meIndex + 1] : null
+  const at = (offset) => racers[meIndex + offset] ?? null
 
   return {
     rank: meIndex + 1,
     total: racers.length,
     me,
-    ahead,
-    behind,
+    // Immediate neighbors, plus one more on each side: when you're 1st or
+    // last there's only one neighbor, and the track needs two (one to stay
+    // put as the far anchor, one to actually move) to still show motion.
+    ahead: at(-1),
+    ahead2: at(-2),
+    behind: at(1),
+    behind2: at(2),
     meFinished
   }
 }

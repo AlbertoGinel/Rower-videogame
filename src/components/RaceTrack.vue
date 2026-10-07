@@ -5,30 +5,26 @@
     <template v-else>
       <div class="line"></div>
 
-      <template v-if="frame.ahead">
-        <div class="ball ghost" :style="{ top: TOP_Y + '%' }"></div>
-        <div class="row" :style="{ top: TOP_Y + '%' }">
-          <span class="date">{{ formatDate(frame.ahead.date) }}</span>
-          <span class="rank">{{ ordinal(frame.rank - 1) }}<small>/{{ frame.total }}</small></span>
-          <span class="cat">({{ category }}m)</span>
-        </div>
-      </template>
-
-      <div class="ball me" :style="{ top: meY + '%' }"></div>
-      <div class="row me" :style="{ top: meY + '%' }">
-        <span class="date you">YOU</span>
-        <span class="rank">{{ ordinal(frame.rank) }}<small>/{{ frame.total }}</small></span>
+      <div class="ball" :class="{ me: slots.top.entity.isMe }" :style="{ top: TOP_Y + '%' }"></div>
+      <div class="row" :style="{ top: TOP_Y + '%' }">
+        <span class="date" :class="{ you: slots.top.entity.isMe }">{{ label(slots.top.entity) }}</span>
+        <span class="rank">{{ ordinal(slots.top.rank) }}<small>/{{ frame.total }}</small></span>
         <span class="cat">({{ category }}m)</span>
       </div>
 
-      <template v-if="frame.behind">
-        <div class="ball ghost" :style="{ top: BOTTOM_Y + '%' }"></div>
-        <div class="row" :style="{ top: BOTTOM_Y + '%' }">
-          <span class="date">{{ formatDate(frame.behind.date) }}</span>
-          <span class="rank">{{ ordinal(frame.rank + 1) }}<small>/{{ frame.total }}</small></span>
-          <span class="cat">({{ category }}m)</span>
-        </div>
-      </template>
+      <div class="ball" :class="{ me: slots.mid.entity.isMe }" :style="{ top: midY + '%' }"></div>
+      <div class="row" :style="{ top: midY + '%' }">
+        <span class="date" :class="{ you: slots.mid.entity.isMe }">{{ label(slots.mid.entity) }}</span>
+        <span class="rank">{{ ordinal(slots.mid.rank) }}<small>/{{ frame.total }}</small></span>
+        <span class="cat">({{ category }}m)</span>
+      </div>
+
+      <div class="ball" :class="{ me: slots.bottom.entity.isMe }" :style="{ top: BOTTOM_Y + '%' }"></div>
+      <div class="row" :style="{ top: BOTTOM_Y + '%' }">
+        <span class="date" :class="{ you: slots.bottom.entity.isMe }">{{ label(slots.bottom.entity) }}</span>
+        <span class="rank">{{ ordinal(slots.bottom.rank) }}<small>/{{ frame.total }}</small></span>
+        <span class="cat">({{ category }}m)</span>
+      </div>
     </template>
   </div>
 </template>
@@ -44,24 +40,57 @@ const props = defineProps({
 
 const TOP_Y = 8
 const BOTTOM_Y = 92
-// Percent-of-track-height clearance kept between "you" and each anchor, so
-// the middle ball can get right up to the others but never overlap them.
+// Percent-of-track-height clearance kept between the moving ball and each
+// anchor, so it can get right up to the others but never overlap them.
 const MIN_GAP = 7
 
-// Ahead and behind are fixed anchors at the top/bottom of the line; "you" is
-// the only ball that moves, sliding between them in proportion to how close
-// you are to each — a straight (distance - behind) / (ahead - behind) ratio,
-// clamped so it can only ever touch an anchor, never sit on top of it.
-const meY = computed(() => {
-  const { ahead, behind, me } = props.frame
-  if (!ahead && !behind) return (TOP_Y + BOTTOM_Y) / 2
-  if (!ahead) return TOP_Y
-  if (!behind) return BOTTOM_Y
-  const span = ahead.distance - behind.distance
-  const ratio = span > 0 ? (me.distance - behind.distance) / span : 0.5
+// The track always shows three slots: a fixed anchor at the top, a fixed
+// anchor at the bottom, and a middle ball that moves between them in
+// proportion to the gaps. Who fills each slot depends on your rank:
+//  - with a racer both ahead and behind, that's the normal case: ahead is
+//    the top anchor, you're the mover, behind is the bottom anchor.
+//  - in 1st place there's no one ahead, so the window extends the other
+//    way: you take the top anchor yourself, and the next two racers behind
+//    you become the mover and the bottom anchor.
+//  - last place mirrors that: you're the bottom anchor, and the window
+//    extends upward to the two racers ahead of you.
+// (frame.total >= 3 whenever this renders, so ahead2/behind2 are always
+// there when needed — computeRaceFrame guarantees two racers on whichever
+// side the window extends into.)
+const slots = computed(() => {
+  const { ahead, ahead2, behind, behind2, me, rank } = props.frame
+  if (ahead && behind) {
+    return {
+      top: { entity: ahead, rank: rank - 1 },
+      mid: { entity: me, rank },
+      bottom: { entity: behind, rank: rank + 1 }
+    }
+  }
+  if (!ahead) {
+    return {
+      top: { entity: me, rank },
+      mid: { entity: behind, rank: rank + 1 },
+      bottom: { entity: behind2, rank: rank + 2 }
+    }
+  }
+  return {
+    top: { entity: ahead2, rank: rank - 2 },
+    mid: { entity: ahead, rank: rank - 1 },
+    bottom: { entity: me, rank }
+  }
+})
+
+const midY = computed(() => {
+  const { top, mid, bottom } = slots.value
+  const span = top.entity.distance - bottom.entity.distance
+  const ratio = span > 0 ? (mid.entity.distance - bottom.entity.distance) / span : 0.5
   const raw = BOTTOM_Y - ratio * (BOTTOM_Y - TOP_Y)
   return Math.min(BOTTOM_Y - MIN_GAP, Math.max(TOP_Y + MIN_GAP, raw))
 })
+
+function label(entity) {
+  return entity.isMe ? 'YOU' : formatDate(entity.date)
+}
 </script>
 
 <style scoped>
